@@ -3,11 +3,11 @@
  * Plugin Name:       WooCommerce Dynamic Pricing Table
  * Plugin URI:        https://github.com/stuartduff/woocommerce-dynamic-pricing-table
  * Description:       Displays a pricing discount table on WooCommerce products, a user role discount message and a simple category discount message when using the WooCommerce Dynamic Pricing plugin.
- * Version:           1.0.5
+ * Version:           1.0.6.181008
  * Author:            Stuart Duff
  * Author URI:        http://stuartduff.com
  * Requires at least: 4.6
- * Tested up to:      4.6
+ * Tested up to:      4.9
  *
  * Text Domain: woocommerce-dynamic-pricing-table
  * Domain Path: /languages/
@@ -222,7 +222,7 @@ final class WC_Dynamic_Pricing_Table {
         switch ( $pricing_rule_sets['rules'][$key]['type'] ) {
 
           case 'price_discount':
-            $output .= '<td><span class="discount-amount">' . sprintf( __( '%1$s Discount Per Item', 'woocommerce-dynamic-pricing-table' ), wc_price( $pricing_rule_sets['rules'][$key]['amount'] ) ) . '</span></td>';
+            $output .= '<td><span class="discount-amount">' . sprintf( __( '%1$s Discount Per Item', 'woocommerce-dynamic-pricing-table' ), wc_price( self::convert( $pricing_rule_sets['rules'][$key]['amount'] ) ) ) . '</span></td>';
           break;
 
           case 'percentage_discount':
@@ -230,7 +230,7 @@ final class WC_Dynamic_Pricing_Table {
           break;
 
           case 'fixed_price':
-            $output .= '<td><span class="discount-amount">' . sprintf( __( '%1$s Per Item', 'woocommerce-dynamic-pricing-table' ), wc_price( $pricing_rule_sets['rules'][$key]['amount'] ) ) . '</span></td>';
+            $output .= '<td><span class="discount-amount">' . sprintf( __( '%1$s Per Item', 'woocommerce-dynamic-pricing-table' ), wc_price( self::convert( $pricing_rule_sets['rules'][$key]['amount'] ) ) ) . '</span></td>';
           break;
 
         }
@@ -272,7 +272,7 @@ final class WC_Dynamic_Pricing_Table {
         switch ( $pricing_rule_sets['blockrules'][$key]['type'] ) {
 
           case 'fixed_adjustment':
-            $output .= '<td><span class="discount-amount">' . sprintf( __( '%1$s Discount Per Item', 'woocommerce-dynamic-pricing-table' ), wc_price( $pricing_rule_sets['blockrules'][$key]['amount'] ) ) . '</span></td>';
+            $output .= '<td><span class="discount-amount">' . sprintf( __( '%1$s Discount Per Item', 'woocommerce-dynamic-pricing-table' ), wc_price( self::convert( $pricing_rule_sets['blockrules'][$key]['amount'] ) ) ) . '</span></td>';
           break;
 
           case 'percent_adjustment':
@@ -280,7 +280,7 @@ final class WC_Dynamic_Pricing_Table {
           break;
 
           case 'fixed_price':
-            $output .= '<td><span class="discount-amount">' . sprintf( __( '%1$s Per Item', 'woocommerce-dynamic-pricing-table' ), wc_price( $pricing_rule_sets['blockrules'][$key]['amount'] ) ) . '</span></td>';
+            $output .= '<td><span class="discount-amount">' . sprintf( __( '%1$s Per Item', 'woocommerce-dynamic-pricing-table' ), wc_price( self::convert( $pricing_rule_sets['blockrules'][$key]['amount'] ) ) ) . '</span></td>';
           break;
 
         }
@@ -327,12 +327,14 @@ final class WC_Dynamic_Pricing_Table {
 
     $role_pricing_rule_sets     = get_option( '_s_membership_pricing_rules', array() );
     $current_user_role          = $this->get_current_user()->roles[0];
-    $current_user_display_name  = $this->get_current_user()->display_name;
+		$current_user_display_name  = $this->get_current_user()->display_name;
+
+		$info_message = '';
 
     foreach( $role_pricing_rule_sets as $role_rules ) {
 
       // Gets the discount role of the user and the discount amount.
-      $user_discount_role   = $role_rules['conditions'][0]['args']['roles'][0];
+      $user_discount_role   = !empty( $role_rules['conditions'][0]['args']['roles'][0] ) ? $role_rules['conditions'][0]['args']['roles'][0] : '';
       $role_discount_amount = $role_rules['rules'][0]['amount'];
 
       if ( is_woocommerce() && $current_user_role === $user_discount_role && null !== $user_discount_role ) {
@@ -344,7 +346,7 @@ final class WC_Dynamic_Pricing_Table {
           break;
 
           case 'fixed_product':
-            $info_message = sprintf( __( 'Hi %1$s as a %2$s you will receive a %3$s discount on all products.', 'woocommerce-dynamic-pricing-table' ), esc_attr( $current_user_display_name ), esc_attr( $current_user_role ), wc_price( $role_discount_amount ) );
+            $info_message = sprintf( __( 'Hi %1$s as a %2$s you will receive a %3$s discount on all products.', 'woocommerce-dynamic-pricing-table' ), esc_attr( $current_user_display_name ), esc_attr( $current_user_role ), wc_price( self::convert( $role_discount_amount ) ) );
           break;
 
         }
@@ -353,8 +355,9 @@ final class WC_Dynamic_Pricing_Table {
 
     }
 
-    wc_add_notice( $info_message, 'notice' );
-
+		if( !empty( $info_message ) ) {
+			wc_add_notice( $info_message, 'notice' );
+		}
   }
 
   /**
@@ -375,13 +378,15 @@ final class WC_Dynamic_Pricing_Table {
   public function category_discount_notification_message() {
 
     $category_pricing_rule_sets = get_option( '_s_category_pricing_rules', array() );
-    $current_product_category   = $this->pricing_queried_object()->term_id;
-    $current_category_name      = $this->pricing_queried_object()->name;
+    $current_product_category   = isset($this->pricing_queried_object()->term_id) ? $this->pricing_queried_object()->term_id : null;
+		$current_category_name      = $this->pricing_queried_object()->name;
+
+		$info_message = '';
 
     foreach( $category_pricing_rule_sets as $category_rules ) {
 
       // Gets the discount category and the discount amount set for the category.
-      $discount_category        = $category_rules['collector']['args']['cats'][0];
+      $discount_category        = !empty( $category_rules['collector']['args']['cats'][0] ) ? $category_rules['collector']['args']['cats'][0] : '';
       $category_discount_amount = $category_rules['rules'][0]['amount'];
 
 
@@ -403,7 +408,9 @@ final class WC_Dynamic_Pricing_Table {
 
     }
 
-    wc_add_notice( $info_message, 'notice' );
+		if( !empty( $info_message ) ) {
+			wc_add_notice( $info_message, 'notice' );
+		}
 
   }
 
@@ -414,6 +421,40 @@ final class WC_Dynamic_Pricing_Table {
    */
   public function output_dynamic_pricing_category_message() {
     $this->category_discount_notification_message();
-  }
+	}
+
+	/**
+	 * Converts an amount from one currency to another.
+	 *
+	 * @param float $amount
+	 * @param string $to_currency
+	 * @param string $from_currency
+	 * @return float
+	 * @author Aelia <support@aelia.co>
+	 * @link https://aelia.co
+	 */
+	protected static function convert($amount, $to_currency = null, $from_currency = null) {
+		// If source currency is not specified, take the shop's base currency as a default
+		if(empty($from_currency)) {
+			$from_currency = get_option('woocommerce_currency');
+		}
+		// If target currency is not specified, take the active currency as a default.
+		// The Currency Switcher sets this currency automatically, based on the context. Other
+		// plugins can also override it, based on their own custom criteria, by implementing
+		// a filter for the "woocommerce_currency" hook.
+		//
+		// For example, a subscription plugin may decide that the active currency is the one
+		// taken from a previous subscription, because it's processing a renewal, and such
+		// renewal should keep the original amounts, in the original currency.
+		if(empty($to_currency)) {
+			$to_currency = get_woocommerce_currency();
+		}
+
+		// Call the currency conversion filter. Using a filter allows for loose coupling. If the
+		// Aelia Currency Switcher is not installed, the filter call will return the original
+		// amount, without any conversion being performed. Your plugin won't even need to know if
+		// the multi-currency plugin is installed or active
+		return apply_filters('wc_aelia_cs_convert', $amount, $from_currency, $to_currency);
+	}
 
 } // End Class
