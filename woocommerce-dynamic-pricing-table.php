@@ -3,7 +3,7 @@
  * Plugin Name:       WooCommerce Dynamic Pricing Table
  * Plugin URI:        https://github.com/stuartduff/woocommerce-dynamic-pricing-table
  * Description:       Displays a pricing discount table on WooCommerce products, a user role discount message and a simple category discount message when using the WooCommerce Dynamic Pricing plugin.
- * Version:           1.0.6.181008
+ * Version:           1.0.7.200228
  * Author:            Stuart Duff
  * Author URI:        http://stuartduff.com
  * Requires at least: 4.6
@@ -162,12 +162,21 @@ final class WC_Dynamic_Pricing_Table {
 
   /**
    * Gets the dynamic pricing rules sets from the post meta.
+	 *
+	 * @param bool $rules_for_current_user_only
    * @access  public
    * @since   1.0.0
    * @return  get_post_meta()
    */
-  public function get_pricing_array_rule_sets() {
-    return get_post_meta( get_the_ID(), '_pricing_rules', true );
+  public function get_pricing_array_rule_sets($rules_for_current_user_only = true) {
+		$rule_sets = get_post_meta( get_the_ID(), '_pricing_rules', true );
+
+		// If required, only return the rules that apply to current user
+		// @since 1.0.7.200228
+		if($rules_for_current_user_only) {
+			$rule_sets = $this->get_discount_rules_for_current_user($rule_sets);
+		}
+		return $rule_sets;
   }
 
   /**
@@ -295,7 +304,54 @@ final class WC_Dynamic_Pricing_Table {
 
     echo $output;
 
-  }
+	}
+
+	/**
+	 * Given the discount rules from a product, it returns the rules that apply to
+	 * current user.
+	 *
+	 * @param array $rule_sets
+	 * @return array
+	 * @since 1.0.7.200228
+	 */
+	protected function get_discount_rules_for_current_user($rule_sets) {
+		// If there's only one rule set, just return it. The rest of the plugin
+		// will automatically check if the dynamic pricing table should be displayed,
+		// if the rule sets applies to everyone or current user
+		if(count($rule_sets) == 1) {
+			return $rule_sets;
+		}
+
+		$result = array();
+
+		foreach($rule_sets as $idx => $rule) {
+			$conditions = array_shift($rule['conditions']);
+			// If the rule set has no conditions, skip it
+			if(!is_array($conditions)) {
+				continue;
+			}
+
+			// Check if the rules apply to current user's role
+			if(($conditions['type'] === 'apply_to') && !empty($conditions['args']['applies_to']) && ($conditions['args']['applies_to'] === 'roles')) {
+				$conditions_roles = isset($conditions['args']['roles']) && is_array($conditions['args']['roles']) ? $conditions['args']['roles'] : array();
+
+				// If the rule doesn't apply to any role, skip it
+				if(empty($conditions_roles)) {
+					continue;
+				}
+
+				foreach($conditions_roles as $role) {
+					// If the rule applies to current user's role, keep it
+					if(current_user_can($role)) {
+						$result[$idx] = $rule;
+						continue;
+					}
+				}
+			}
+		}
+		// Return matching rules
+		return $result;
+	}
 
   /**
    * Outputs the dynamic pricing table.
@@ -304,9 +360,9 @@ final class WC_Dynamic_Pricing_Table {
    */
   public function output_dynamic_pricing_table() {
 
-    $array_rule_sets = $this->get_pricing_array_rule_sets();
+		$array_rule_sets = $this->get_pricing_array_rule_sets(true);
 
-    if ( $array_rule_sets && is_array( $array_rule_sets ) && sizeof( $array_rule_sets ) == 1 ) {
+    if ( $array_rule_sets && is_array( $array_rule_sets ) ) {
       foreach( $array_rule_sets as $pricing_rule_sets ) {
         if ( $pricing_rule_sets['mode'] == 'continuous' ) :
           $this->bulk_pricing_table_output();
@@ -378,7 +434,7 @@ final class WC_Dynamic_Pricing_Table {
   public function category_discount_notification_message() {
 
     $category_pricing_rule_sets = get_option( '_s_category_pricing_rules', array() );
-    $current_product_category   = isset($this->pricing_queried_object()->term_id) ? $this->pricing_queried_object()->term_id : null;
+    $current_product_category   = $this->pricing_queried_object()->term_id;
 		$current_category_name      = $this->pricing_queried_object()->name;
 
 		$info_message = '';
